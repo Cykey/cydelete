@@ -1,9 +1,26 @@
-#import <Preferences/PSSpecifier.h>
-#import <Preferences/PSListController.h>
+#import <Foundation/Foundation.h>
+
+@interface PSSpecifier : NSObject
+- (NSString *)name;
+- (void)setName:(NSString *)name;
+- (id)propertyForKey:(NSString *)key;
+- (void)setProperty:(id)property forKey:(NSString *)key;
+- (NSDictionary *)titleDictionary;
+- (void)setTitleDictionary:(NSDictionary *)dictionary;
+@end
+
+@interface PSListController : UIViewController {
+	NSArray *_specifiers;
+}
+- (NSString *)navigationTitle;
+- (NSBundle *)bundle;
+- (NSArray *)loadSpecifiersFromPlistName:(NSString *)plistName target:(id)target;
+- (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier;
+@end
 
 static CFNotificationCenterRef darwinNotifyCenter = CFNotificationCenterGetDarwinNotifyCenter();
 
-@interface UIDevice (wc)
+@interface UIDevice (Private)
 - (BOOL)isWildcat;
 @end
 

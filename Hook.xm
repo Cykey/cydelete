@@ -1,20 +1,53 @@
-#import <SpringBoard/SBIcon.h>
-#import <SpringBoard/SBApplicationIcon.h>
-#import <SpringBoard/SBIconController.h>
-#import <SpringBoard/SBIconModel.h>
-#import <SpringBoard/SBApplicationController.h>
-#import <SpringBoard/SBApplication.h>
 #import <mach/mach_host.h>
 #import <dirent.h>
 #import <unistd.h>
 
+@interface SBApplication : NSObject
+- (void)kill;
+- (BOOL)isSystemApplication;
+- (NSString *)path;
+- (NSString *)bundleIdentifier;
+- (NSString *)displayIdentifier;
+- (NSString *)displayName;
+@end
+
+@interface SBApplicationController : NSObject
++ (id)sharedInstance;
+- (id)allApplications;
+- (void)removeApplicationsFromModelWithBundleIdentifier:(NSString *)bundle;
+- (void)uninstallApplication:(SBApplication *)application;
+@end
+
+@interface SBIcon : NSObject
+@end
+
+@interface SBIconView : NSObject
+- (SBIcon *)icon;
+@end
+
+@interface SBApplicationIcon : SBIcon
+- (SBApplication *)application;
+@end
+
+@interface SBIconModel : NSObject
++ (id)sharedInstance;
+- (SBIcon *)iconForDisplayIdentifier:(NSString *)identifier;
+- (void)uninstallApplicationIcon:(SBApplicationIcon *)icon;
+@end
+
+@interface SBIconController : NSObject
++ (id)sharedInstance;
+- (void)removeIcon:(SBIcon *)icon animate:(BOOL)animate;
+@end
+
+@interface SBIconViewMap : NSObject
++ (id)homescreenMap;
+- (SBIconModel *)iconModel;
+@end
+
 __attribute__((unused)) static NSMutableString *outputForShellCommand(NSString *cmd);
 static void removeBundleFromMIList(NSString *bundle);
 static void CDUpdatePrefs();
-
-%class SBIconModel
-%class SBIconController
-%class SBIcon
 
 static NSBundle *cyDelBundle = nil;
 static NSDictionary *cyDelPrefs = nil;
@@ -114,6 +147,12 @@ static id ownerForSBApplication(SBApplication *application) {
 	char *pkgNameC = owner([bundle UTF8String], [title UTF8String], [plistPath UTF8String]);
 	id package = pkgNameC ? [NSString stringWithUTF8String:pkgNameC] : [NSNull null];
 	return package;
+}
+
+// Taken from rpetrich's RunningIndicator tweak.
+static SBIconModel *SharedIconModel(void)
+{
+	return [%c(SBIconViewMap) instancesRespondToSelector:@selector(iconModel)] ? [[%c(SBIconViewMap) homescreenMap] iconModel] : [%c(SBIconModel) sharedInstance];
 }
 
 @implementation CDUninstallOperation
@@ -244,8 +283,10 @@ static void CDUpdatePrefs() {
 }
 
 %hook SBApplicationController -(void)uninstallApplication:(SBApplication *)application {
+	%log;
 	if(![application isSystemApplication] || [[application path] isEqualToString:@"/Applications/Web.app"]) {
 		%orig;
+		NSLog(@"bailing");
 		return;
 	}
 
@@ -283,11 +324,16 @@ static void CDUpdatePrefs() {
 			NSString *bundle = [curApp bundleIdentifier];
 			if(![bundle hasPrefix:@"jp.ashikase.springjumps."])
 				continue;
-			SBIcon *curIcon = [[$SBIconModel sharedInstance] iconForDisplayIdentifier:[curApp displayIdentifier]];
-			if(!curIcon) continue;
+
+			SBIconModel *iconModel = SharedIconModel();
+			SBIcon *curIcon = [iconModel iconForDisplayIdentifier:[curApp displayIdentifier]];
+
+			if (!curIcon)
+				continue;
+
 			removeBundleFromMIList(bundle);
 			[self removeApplicationsFromModelWithBundleIdentifier:bundle];
-			[[$SBIconController sharedInstance] removeIcon:curIcon animate:YES];
+			[[%c(SBIconController) sharedInstance] removeIcon:curIcon animate:YES];
 		}
 	}
 }
@@ -306,7 +352,7 @@ static void uninstallClickedForIcon(SBApplicationIcon *self) {
 		id _pkgName;
 		if([bundle isEqualToString:@"com.ripdev.Installer"]
 		   || [bundle isEqualToString:@"com.ripdev.install"]) {
-			// If we're dealing with Installer, short circuit over the package search. 
+			// If we're dealing with Installer, short circuit over the package search.
 			_pkgName = [NSNull null];
 		} else {
 			_pkgName = ownerForSBApplication(app);
@@ -317,7 +363,6 @@ static void uninstallClickedForIcon(SBApplicationIcon *self) {
 
 %hook SBIconController
 - (void)iconCloseBoxTapped:(id)_i {
-	%log;
 	SBIcon *icon = nil;
 	if([_i class] == %c(SBIconView)) {
 		icon = [_i icon];
@@ -392,7 +437,13 @@ static void uninstallClickedForIcon(SBApplicationIcon *self) {
 		%orig;
 	}
 
-	[[$SBIconModel sharedInstance] uninstallApplicationIcon:self];
+	SBIconModel *iconModel = SharedIconModel();
+	if ([iconModel respondsToSelector:@selector(uninstallApplicationIcon:)]) {
+		[iconModel uninstallApplicationIcon:self];
+	} else {
+		// Crashes here.
+		[[%c(SBApplicationController) sharedInstance] uninstallApplication:[self application]];
+	}
 }
 
 -(NSString *)uninstallAlertTitle {

@@ -4,9 +4,9 @@ CyDelete_FRAMEWORKS = UIKit
 
 SUBPROJECTS = setuid preferences
 
-include framework/makefiles/common.mk
-include framework/makefiles/tweak.mk
-include framework/makefiles/aggregate.mk
+include theos/makefiles/common.mk
+include theos/makefiles/tweak.mk
+include theos/makefiles/aggregate.mk
 
 after-stage::
 	find $(FW_STAGING_DIR) -iname '*.plist' -or -iname '*.strings' -exec plutil -convert binary1 {} \;
